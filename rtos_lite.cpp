@@ -5,6 +5,7 @@
 // ******************************************************************
 
 #include "rtos_lite.h"
+#include "stdio.h"
 
 // ******************************************************************
 
@@ -43,9 +44,9 @@ namespace OS_LITE
   bool tick_callback(struct repeating_timer *t) {
     system_ticks++;
 
-    for (int i = 0; i < task_count; i++) {
+    for (uint8_t i = 0; i < task_count; i++) {
       if (OS_TASKS[i].state == TaskState::BLOCKED &&
-          system_ticks % OS_TASKS[i].delay_interval_ms == 0)
+          system_ticks >= OS_TASKS[i].delay_interval_ms)
       {
         OS_TASKS[i].state = TaskState::READY;
       }
@@ -62,19 +63,20 @@ namespace OS_LITE
 
   void task_sleep(Task* task, uint32_t delay_ms)
   {
-    task->delay_interval_ms = delay_ms;
+    task->delay_interval_ms = system_ticks + delay_ms;
     task->state = TaskState::BLOCKED;
   }
 
   void scheduler_init() {
+    start_tick();
     while (true) {
       int8_t best = -1;
-      int8_t best_priority = -10;
+      int8_t best_priority = -128;
 
       for (uint8_t i = 0; i < task_count; i++) {
         if (OS_TASKS[i].state == TaskState::READY &&
-          OS_TASKS[i].priority > best_priority) {
-
+          OS_TASKS[i].priority > best_priority)
+        {
           best_priority = OS_TASKS[i].priority;
           best = i;
         }
@@ -83,8 +85,15 @@ namespace OS_LITE
       if (best != -1) {
         OS_TASKS[best].state = TaskState::RUNNING;
         OS_TASKS[best].func();
-        OS_TASKS[best].state = TaskState::READY;
+        if (OS_TASKS[best].state == TaskState::RUNNING) {
+          OS_TASKS[best].state = TaskState::READY;
+        }
       }
+      else
+      {
+        tight_loop_contents(); // No ready tasks, so we can do a tight loop until the next tick interrupt
+      }
+
     }
   }
-} // namespace os_lite
+} // namespace OS_LITE

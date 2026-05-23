@@ -49,8 +49,8 @@ namespace OS_LITE
   {
     TaskFunction func;
     uint8_t priority;
-    TaskState state;
-    uint32_t delay_interval_ms;
+    volatile TaskState state;
+    volatile uint32_t delay_interval_ms;
     Mailbox mailbox;
   };
 
@@ -58,7 +58,7 @@ namespace OS_LITE
   bool mailbox_send(Mailbox* mailbox, const Message msg);
 
   inline std::array<Task,MAX_TASKS> OS_TASKS;
-  inline uint8_t task_count {0};
+  inline volatile uint8_t task_count {0};
 
   bool tick_callback(struct repeating_timer* timer);
   void start_tick();
@@ -67,4 +67,4 @@ namespace OS_LITE
   void scheduler_init();
 
 // ******************************************************************
-} // namespace os_lite
+} // namespace OS_LITE

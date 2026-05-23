@@ -10,3 +10,12 @@ cd build
 cmake ..
 make
 ```
+
+OR
+
+```sh
+mkdir build
+cd build
+cmake -G Ninja ..
+ninja
+```
