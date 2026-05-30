@@ -225,7 +225,7 @@ namespace OS_LITE
       }
       else
       {
-        tight_loop_contents(); // No ready tasks, so we can do a tight loop until the next tick interrupt
+        __asm volatile("wfi"); // sleep until next interrupt (tick/GPIO/etc.)
       }
 
     }
