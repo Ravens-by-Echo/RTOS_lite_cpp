@@ -89,6 +89,7 @@ namespace OS_LITE
   {
     TaskFunction func;
     uint8_t priority;
+    uint8_t base_priority;
     volatile TaskState state;
     volatile uint32_t delay_interval_ms;
     Mailbox mailbox;
@@ -96,7 +97,7 @@ namespace OS_LITE
     // Wait Metadata
     WaitType wait_type;
     void* wait_object;
-    uint32_t wait_tick_ms;
+    uint32_t wake_tick_ms;
     uint32_t wait_mask;
     bool wait_all;
     bool clear_on_exit;
@@ -113,8 +114,8 @@ namespace OS_LITE
 
   // event flags
   bool event_flags_wait(EventFlags* flags, uint32_t mask, bool wait_all, bool clear_on_exit, uint32_t timeout_ms);
-  bool event_flags_set(EventFlags* flags, uint32_t bits);
-  bool event_flags_clear(EventFlags* flags, uint32_t bits);
+  void event_flags_set(EventFlags* flags, uint32_t bits);
+  void event_flags_clear(EventFlags* flags, uint32_t bits);
 
   // message queue
   bool message_queue_send(MessageQueue* queue, const Message msg, uint32_t timeout_ms);
@@ -122,6 +123,7 @@ namespace OS_LITE
 
   // Round Robin implementation
   static int32_t m_last_scheduled_index {-1};
+  static int32_t m_current_task_index {-1};
   static int8_t pick_next_task_index();
 
   bool mailbox_receive(Mailbox* mailbox, Message* msg);

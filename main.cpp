@@ -1,40 +1,100 @@
 #include "rtos_lite.h"
 
-void blink25();
-void blink1();
+using namespace OS_LITE;
+
+void blink25_producer();
+void blink1_consumer();
+
+constexpr uint32_t EVT_NEW_MSG = (1u << 0);
+
+// Kernel objects
+Semaphore m_sem{0, 1};          // binary semaphore
+Mutex m_mutex{-1, 0};           // unlocked
+EventFlags m_events{0};
+MessageQueue m_queue{{}, 0, 0, 0};
+
+volatile uint32_t m_shared_counter = 0;
+
+static void init_task(std::array<Task,MAX_TASKS>& t_array, TaskFunction fn, uint8_t prio)
+{
+  static uint8_t next_task_index = 0;
+  if (next_task_index < MAX_TASKS)
+  {
+    Task& t = t_array[next_task_index++];
+    t.func = fn;
+    t.priority = prio;
+    t.base_priority = prio;
+    t.state = TaskState::READY;
+    t.delay_interval_ms = 0;
+    t.mailbox = {};
+
+    t.wait_type = WaitType::NONE;
+    t.wait_object = nullptr;
+    t.wake_tick_ms = 0;
+    t.wait_mask = 0;
+    t.wait_all = false;
+    t.clear_on_exit = false;
+    t.pending_message = {0, 0};
+
+    task_count++;
+  }
+  return;
+}
 
 int main()
 {
   gpio_init(25);
   gpio_set_dir(25, GPIO_OUT);
+
   gpio_init(1);
   gpio_set_dir(1, GPIO_OUT);
 
-  OS_LITE::OS_TASKS = {{
-    {blink25, 1, OS_LITE::TaskState::READY, 0, {}},
-    {blink1, 2, OS_LITE::TaskState::READY, 0, {}},
-  }};
+  init_task(OS_TASKS, blink25_producer, 2);
+  init_task(OS_TASKS, blink1_consumer, 2);
 
-  OS_LITE::task_count = 2;
-  OS_LITE::scheduler_init();
-
+  scheduler_init();
   return 0;
 }
 
-void blink25()
+void blink25_producer()
 {
-  static bool state{false};
-  gpio_put(25, state);
-  state = !state;
+  static bool led_state{false};
+  led_state = !led_state;
+  gpio_put(25, led_state);
 
-  OS_LITE::task_sleep(&OS_LITE::OS_TASKS[0], 2000); // 500 ms
+  // Mutex-protected shared data
+  if (mutex_lock(&m_mutex, 0))
+  {
+    m_shared_counter++;
+    mutex_unlock(&m_mutex);
+  }
+
+  // Queue + event flag
+  Message msg{1, m_shared_counter};
+  if (message_queue_send(&m_queue, msg, 0))
+  {
+    event_flags_set(&m_events, EVT_NEW_MSG);
+    // Semaphore signal
+    semaphore_give(&m_sem);
+  }
+
+  task_sleep(&OS_TASKS[0], 500);
 }
 
-void blink1()
+void blink1_consumer()
 {
-  static bool state{false};
-  gpio_put(1, state);
-  state = !state;
+  // Wait for producer signal
+  if (!semaphore_take(&m_sem, WAIT_FOREVER)) return;
 
-  OS_LITE::task_sleep(&OS_LITE::OS_TASKS[1], 1000); // 500 ms
+  // Wait until queue data event is set
+  if (!event_flags_wait(&m_events, EVT_NEW_MSG, false, true, WAIT_FOREVER)) return;
+
+  Message msg{};
+  if (message_queue_receive(&m_queue, &msg, 0))
+  {
+    // Use message value to drive LED1
+    gpio_put(1, (msg.value & 1u) ? 1 : 0);
+  }
+
+  task_sleep(&OS_TASKS[1], 1000);
 }
