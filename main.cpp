@@ -1,9 +1,11 @@
 #include "rtos_lite.h"
+#include "rtos_task.h"
 
 using namespace OS_LITE;
 
 void blink25_producer();
 void blink1_consumer();
+void heartbeat_task();
 
 constexpr uint32_t EVT_NEW_MSG = (1u << 0);
 
@@ -15,45 +17,31 @@ MessageQueue m_queue{{}, 0, 0, 0};
 
 volatile uint32_t m_shared_counter = 0;
 
-static void init_task(std::array<Task,MAX_TASKS>& t_array, TaskFunction fn, uint8_t prio)
-{
-  static uint8_t next_task_index = 0;
-  if (next_task_index < MAX_TASKS)
-  {
-    Task& t = t_array[next_task_index++];
-    t.func = fn;
-    t.priority = prio;
-    t.base_priority = prio;
-    t.state = TaskState::READY;
-    t.delay_interval_ms = 0;
-    t.mailbox = {};
-
-    t.wait_type = WaitType::NONE;
-    t.wait_object = nullptr;
-    t.wake_tick_ms = 0;
-    t.wait_mask = 0;
-    t.wait_all = false;
-    t.clear_on_exit = false;
-    t.pending_message = {0, 0};
-
-    task_count++;
-  }
-  return;
-}
-
 int main()
 {
+  gpio_init(16);
+  gpio_set_dir(16, GPIO_OUT);
+
   gpio_init(25);
   gpio_set_dir(25, GPIO_OUT);
 
   gpio_init(1);
   gpio_set_dir(1, GPIO_OUT);
 
-  init_task(OS_TASKS, blink25_producer, 2);
-  init_task(OS_TASKS, blink1_consumer, 2);
+  task_create(heartbeat_task, 1); // low priority background task
+  task_create(blink25_producer, 10);
+  task_create(blink1_consumer, 5);
 
   scheduler_init();
   return 0;
+}
+
+void heartbeat_task()
+{
+  static bool led_state{false};
+  led_state = !led_state;
+  gpio_put(16, led_state);
+  task_sleep_current(1000);
 }
 
 void blink25_producer()
@@ -78,7 +66,7 @@ void blink25_producer()
     semaphore_give(&m_sem);
   }
 
-  task_sleep(&OS_TASKS[0], 500);
+  task_sleep_current(500);
 }
 
 void blink1_consumer()
@@ -96,5 +84,5 @@ void blink1_consumer()
     gpio_put(1, (msg.value & 1u) ? 1 : 0);
   }
 
-  task_sleep(&OS_TASKS[1], 1000);
+  task_sleep_current(100);
 }
